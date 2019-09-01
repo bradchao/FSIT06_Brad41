@@ -32,6 +32,11 @@
         android:text="visible to other"
         android:onClick="test4"
         />
+    <ListView
+        android:id="@+id/listDevices"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        />
 
 
 </LinearLayout>

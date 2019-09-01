@@ -17,11 +17,20 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.widget.ListView;
+import android.widget.SimpleAdapter;
 
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.Set;
 
 public class MainActivity extends AppCompatActivity {
     private BluetoothAdapter bluetoothAdapter;
+    private LinkedList<HashMap<String,String>> devices = new LinkedList<>();
+    private ListView listDevices;
+    private SimpleAdapter adapter;
+    private String[] from = {"name", "mac"};
+    private int[] to = {R.id.item_name, R.id.item_mac};
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
@@ -33,6 +42,26 @@ public class MainActivity extends AppCompatActivity {
                     String deviceName = device.getName();
                     String deviceHardwareAddress = device.getAddress(); // MAC address
                     Log.v("brad", deviceName);
+
+                    HashMap<String,String> deviceData = new HashMap<>();
+                    deviceData.put("name", deviceName);
+                    deviceData.put("mac", deviceHardwareAddress);
+
+                    boolean isRepeat = false;
+                    for (HashMap<String,String> dd : devices){
+                        if (dd.get("mac").equals(deviceHardwareAddress)){
+                            Log.v("brad", "device dup");
+                            isRepeat = true;
+                            break;
+                        }
+                    }
+
+                    if (!isRepeat) {
+                        Log.v("brad", "new device add");
+                        devices.add(deviceData);
+                        adapter.notifyDataSetChanged();
+                    }
+
                 }
             }catch (Exception e){
 
@@ -65,12 +94,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void  init(){
-        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-    }
+        listDevices = findViewById(R.id.listDevices);
+        adapter = new SimpleAdapter(this,devices, R.layout.item_device,from,to);
+        listDevices.setAdapter(adapter);
 
-    @Override
-    protected void onResume() {
-        super.onResume();
+        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         if (!bluetoothAdapter.isEnabled()) {
             Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             startActivityForResult(enableBtIntent, 123);
@@ -78,6 +106,7 @@ public class MainActivity extends AppCompatActivity {
             regReceiver();
         }
     }
+
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
@@ -93,8 +122,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onPause() {
-        super.onPause();
+    protected void onDestroy() {
+        super.onDestroy();
         unregisterReceiver(broadcastReceiver);
     }
 
@@ -116,8 +145,8 @@ public class MainActivity extends AppCompatActivity {
 
     // Start Scanning
     public void test2(View view){
-
         if (!bluetoothAdapter.isDiscovering()) {
+            devices.clear();
             bluetoothAdapter.startDiscovery();
         }
     }
