@@ -9,6 +9,8 @@ import androidx.core.content.ContextCompat;
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothServerSocket;
+import android.bluetooth.BluetoothSocket;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -17,20 +19,25 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.widget.AdapterView;
 import android.widget.ListView;
 import android.widget.SimpleAdapter;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Set;
+import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
     private BluetoothAdapter bluetoothAdapter;
-    private LinkedList<HashMap<String,String>> devices = new LinkedList<>();
+    private LinkedList<HashMap<String,Object>> devices = new LinkedList<>();
     private ListView listDevices;
     private SimpleAdapter adapter;
     private String[] from = {"name", "mac"};
     private int[] to = {R.id.item_name, R.id.item_mac};
+    private final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+
 
     private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
@@ -43,13 +50,14 @@ public class MainActivity extends AppCompatActivity {
                     String deviceHardwareAddress = device.getAddress(); // MAC address
                     Log.v("brad", deviceName);
 
-                    HashMap<String,String> deviceData = new HashMap<>();
+                    HashMap<String,Object> deviceData = new HashMap<>();
                     deviceData.put("name", deviceName);
                     deviceData.put("mac", deviceHardwareAddress);
+                    deviceData.put("device", device);
 
                     boolean isRepeat = false;
-                    for (HashMap<String,String> dd : devices){
-                        if (dd.get("mac").equals(deviceHardwareAddress)){
+                    for (HashMap<String,Object> dd : devices){
+                        if (dd.get("device") == device){
                             Log.v("brad", "device dup");
                             isRepeat = true;
                             break;
@@ -97,6 +105,12 @@ public class MainActivity extends AppCompatActivity {
         listDevices = findViewById(R.id.listDevices);
         adapter = new SimpleAdapter(this,devices, R.layout.item_device,from,to);
         listDevices.setAdapter(adapter);
+        listDevices.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
+                doPair(i);
+            }
+        });
 
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         if (!bluetoothAdapter.isEnabled()) {
@@ -167,5 +181,123 @@ public class MainActivity extends AppCompatActivity {
             bluetoothAdapter.cancelDiscovery();
         }
     }
+
+
+    private void doPair(int i){
+        // i => MAC device
+        //new AcceptThread().start();
+        BluetoothDevice device = (BluetoothDevice) devices.get(i).get("device");
+        new ConnectThread(device).start();
+
+    }
+
+
+    private class ConnectThread extends Thread {
+        private final BluetoothSocket mmSocket;
+        private final BluetoothDevice mmDevice;
+
+        public ConnectThread(BluetoothDevice device) {
+            // Use a temporary object that is later assigned to mmSocket
+            // because mmSocket is final.
+            BluetoothSocket tmp = null;
+            mmDevice = device;
+
+            try {
+                // Get a BluetoothSocket to connect with the given BluetoothDevice.
+                // MY_UUID is the app's UUID string, also used in the server code.
+                tmp = device.createRfcommSocketToServiceRecord(MY_UUID);
+            } catch (IOException e) {
+                Log.v("brad", "Socket's create() method failed", e);
+            }
+            mmSocket = tmp;
+        }
+
+        public void run() {
+            // Cancel discovery because it otherwise slows down the connection.
+            bluetoothAdapter.cancelDiscovery();
+
+            try {
+                // Connect to the remote device through the socket. This call blocks
+                // until it succeeds or throws an exception.
+                mmSocket.connect();
+                Log.v("brad", "connect OK");
+            } catch (IOException connectException) {
+                // Unable to connect; close the socket and return.
+                try {
+                    mmSocket.close();
+                } catch (IOException closeException) {
+                    Log.v("brad", "Could not close the client socket", closeException);
+                }
+                return;
+            }
+
+            // The connection attempt succeeded. Perform work associated with
+            // the connection in a separate thread.
+            //manageMyConnectedSocket(mmSocket);
+        }
+
+        // Closes the client socket and causes the thread to finish.
+        public void cancel() {
+            try {
+                mmSocket.close();
+            } catch (IOException e) {
+                Log.v("brad", "Could not close the client socket", e);
+            }
+        }
+    }
+
+    private class AcceptThread extends Thread {
+        private final BluetoothServerSocket mmServerSocket;
+
+        public AcceptThread() {
+            // Use a temporary object that is later assigned to mmServerSocket
+            // because mmServerSocket is final.
+            BluetoothServerSocket tmp = null;
+            try {
+                // MY_UUID is the app's UUID string, also used by the client code.
+                tmp = bluetoothAdapter.listenUsingRfcommWithServiceRecord("brad", MY_UUID);
+            } catch (IOException e) {
+                Log.v("brad", "Socket's listen() method failed", e);
+            }
+            mmServerSocket = tmp;
+        }
+
+        public void run() {
+            BluetoothSocket socket = null;
+            // Keep listening until exception occurs or a socket is returned.
+            while (true) {
+                try {
+                    socket = mmServerSocket.accept();
+                } catch (IOException e) {
+                    Log.v("brad", "Socket's accept() method failed", e);
+                    break;
+                }
+
+                if (socket != null) {
+                    // A connection was accepted. Perform work associated with
+                    // the connection in a separate thread.
+                    //manageMyConnectedSocket(socket);
+                    try {
+                        mmServerSocket.close();
+                    }catch (Exception e){
+
+                    }finally {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Closes the connect socket and causes the thread to finish.
+        public void cancel() {
+            try {
+                mmServerSocket.close();
+            } catch (IOException e) {
+                Log.v("brad", "Could not close the connect socket", e);
+            }
+        }
+    }
+
+
 
 }
